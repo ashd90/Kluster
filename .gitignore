@@ -1,0 +1,21 @@
+# OS
+.DS_Store
+Thumbs.db
+
+# Editor
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Kubernetes secrets (never commit real secrets)
+*-secret.yaml
+*-secrets.yaml
+*.env
+.env*
+
+# kind cluster configs with sensitive data
+kubeconfig-*
+
+# Logs
+*.log
