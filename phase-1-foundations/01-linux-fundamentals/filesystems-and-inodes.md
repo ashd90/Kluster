@@ -166,3 +166,36 @@ Both bypass the OverlayFS upper layer — writes go directly to the
 underlying storage, not the ephemeral container layer.
 In Kubernetes: always use PersistentVolumeClaims, not bind mounts
 (bind mounts tie you to a specific node's filesystem).
+
+---
+
+## Understanding check — clarifications
+
+### On container writes and disk usage
+Every write inside a container goes to the OverlayFS writable upper
+layer, which physically lives at /var/lib/docker/overlay2/ on the host.
+Writing 10GB of logs inside a container = 10GB consumed on host disk.
+No volume mounts needed for this to happen.
+This is a real production issue: runaway log writers fill node disks.
+Fix: always mount log directories as volumes, or configure log rotation
+inside the container.
+
+### On rm and open file descriptors
+`rm` does two things:
+  1. Removes the directory entry (the filename → inode mapping)
+  2. Decrements the inode link count
+
+Space is freed ONLY when BOTH conditions are true:
+  - Link count reaches 0 (no more filenames pointing to this inode)
+  - No process has the file open (no open file descriptors)
+
+If an app is actively writing to a log file and you rm it:
+  - Link count drops to 0 (filename is gone, ls won't show it)
+  - But the app's file descriptor keeps the inode alive
+  - Data blocks are NOT freed until the app closes the file
+  - Disk usage does not change until process restart
+
+Workaround (without restarting): truncate the file to zero bytes
+  truncate -s 0 /proc/<pid>/fd/<fd_number>
+This empties the content while the file descriptor stays valid.
+The writing process continues without errors, disk space is reclaimed.
